@@ -3,43 +3,46 @@ package com.helwigdev.cwcompat
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.annotation.TargetApi
-import android.content.pm.PackageManager
-import android.support.design.widget.Snackbar
-import android.support.v7.app.AppCompatActivity
-import android.app.LoaderManager.LoaderCallbacks
-import android.content.CursorLoader
-import android.content.Loader
-import android.database.Cursor
-import android.net.Uri
+import android.content.Context
+import android.content.SharedPreferences
 import android.os.AsyncTask
 import android.os.Build
 import android.os.Bundle
-import android.provider.ContactsContract
+import android.support.v7.app.AppCompatActivity
 import android.text.TextUtils
+import android.util.Log
 import android.view.View
 import android.view.inputmethod.EditorInfo
-import android.widget.ArrayAdapter
 import android.widget.TextView
-
-import java.util.ArrayList
-import android.Manifest.permission.READ_CONTACTS
-
+import android.widget.Toast
+import com.github.kittinunf.fuel.Fuel
 import kotlinx.android.synthetic.main.activity_login.*
 
 /**
  * A login screen that offers login via email/password.
  */
-class LoginActivity : AppCompatActivity(), LoaderCallbacks<Cursor> {
+class LoginActivity : AppCompatActivity() {
     /**
      * Keep track of the login task to ensure we can cancel it if requested.
      */
     private var mAuthTask: UserLoginTask? = null
 
+    var prefs: SharedPreferences? = null
+    val PREFS_FILENAME = "com.helwigdev.cwcompat.prefs"
+
+    val PREF_SITE = "prefsite"
+    val PREF_COMPANY_ID = "prefcompanyid"
+    val PREF_USERNAME = "prefusername"
+    val PREF_MEMBERHASH = "prefmemberhash"
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_login)
+
+        initSavedTextValues()
+        company_id.requestFocus()
+
         // Set up the login form.
-        populateAutoComplete()
         password.setOnEditorActionListener(TextView.OnEditorActionListener { _, id, _ ->
             if (id == EditorInfo.IME_ACTION_DONE || id == EditorInfo.IME_NULL) {
                 attemptLogin()
@@ -49,43 +52,17 @@ class LoginActivity : AppCompatActivity(), LoaderCallbacks<Cursor> {
         })
 
         email_sign_in_button.setOnClickListener { attemptLogin() }
+
     }
 
-    private fun populateAutoComplete() {
-        if (!mayRequestContacts()) {
-            return
-        }
 
-        loaderManager.initLoader(0, null, this)
-    }
+    private fun initSavedTextValues(){
+        prefs = this.getSharedPreferences(PREFS_FILENAME, Context.MODE_PRIVATE)
 
-    private fun mayRequestContacts(): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
-            return true
-        }
-        if (checkSelfPermission(READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) {
-            return true
-        }
-        if (shouldShowRequestPermissionRationale(READ_CONTACTS)) {
-            Snackbar.make(email, R.string.permission_rationale, Snackbar.LENGTH_INDEFINITE)
-                    .setAction(android.R.string.ok,
-                            { requestPermissions(arrayOf(READ_CONTACTS), REQUEST_READ_CONTACTS) })
-        } else {
-            requestPermissions(arrayOf(READ_CONTACTS), REQUEST_READ_CONTACTS)
-        }
-        return false
-    }
+        site.setText(prefs!!.getString(PREF_SITE, getString(R.string.url_na_site)))
+        company_id.setText(prefs!!.getString(PREF_COMPANY_ID, ""))
+        username.setText(prefs!!.getString(PREF_USERNAME, ""))
 
-    /**
-     * Callback received when a permissions request has been completed.
-     */
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>,
-                                            grantResults: IntArray) {
-        if (requestCode == REQUEST_READ_CONTACTS) {
-            if (grantResults.size == 1 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                populateAutoComplete()
-            }
-        }
     }
 
 
@@ -102,14 +79,21 @@ class LoginActivity : AppCompatActivity(), LoaderCallbacks<Cursor> {
         // Reset errors.
         site.error = null
         company_id.error = null
-        email.error = null
+        username.error = null
         password.error = null
 
         // Store values at the time of the login attempt.
         val siteStr = site.text.toString()
         val companyIdStr = company_id.text.toString()
-        val emailStr = email.text.toString()
+        val usernameStr = username.text.toString()
         val passwordStr = password.text.toString()
+
+        //save values to preferences to be used next time
+        val editor = prefs!!.edit()
+        editor.putString(PREF_SITE, siteStr)
+        editor.putString(PREF_COMPANY_ID, companyIdStr)
+        editor.putString(PREF_USERNAME, usernameStr)
+        editor.apply()
 
         var cancel = false
         var focusView: View? = null
@@ -131,14 +115,16 @@ class LoginActivity : AppCompatActivity(), LoaderCallbacks<Cursor> {
             cancel = true
         }
 
-        // Check for a valid email address.
-        if (TextUtils.isEmpty(emailStr)) {
-            email.error = getString(R.string.error_field_required)
-            focusView = email
+        if(TextUtils.isEmpty(passwordStr)){
+            password.error = getString(R.string.error_field_required)
+            focusView = password
             cancel = true
-        } else if (!isEmailValid(emailStr)) {
-            email.error = getString(R.string.error_invalid_email)
-            focusView = email
+        }
+
+        // Check for a valid email address.
+        if (TextUtils.isEmpty(usernameStr)) {
+            username.error = getString(R.string.error_field_required)
+            focusView = username
             cancel = true
         }
 
@@ -150,14 +136,9 @@ class LoginActivity : AppCompatActivity(), LoaderCallbacks<Cursor> {
             // Show a progress spinner, and kick off a background task to
             // perform the user login attempt.
             showProgress(true)
-            mAuthTask = UserLoginTask(siteStr, companyIdStr, emailStr, passwordStr)
+            mAuthTask = UserLoginTask(siteStr, companyIdStr, usernameStr, passwordStr)
             mAuthTask!!.execute(null as Void?)
         }
-    }
-
-    private fun isEmailValid(email: String): Boolean {
-        //TODO: Replace this with your own logic
-        return email.contains("@")
     }
 
     private fun isPasswordValid(password: String): Boolean {
@@ -203,77 +184,56 @@ class LoginActivity : AppCompatActivity(), LoaderCallbacks<Cursor> {
         }
     }
 
-    override fun onCreateLoader(i: Int, bundle: Bundle?): Loader<Cursor> {
-        return CursorLoader(this,
-                // Retrieve data rows for the device user's 'profile' contact.
-                Uri.withAppendedPath(ContactsContract.Profile.CONTENT_URI,
-                        ContactsContract.Contacts.Data.CONTENT_DIRECTORY), ProfileQuery.PROJECTION,
 
-                // Select only email addresses.
-                ContactsContract.Contacts.Data.MIMETYPE + " = ?", arrayOf(ContactsContract.CommonDataKinds.Email
-                .CONTENT_ITEM_TYPE),
-
-                // Show primary email addresses first. Note that there won't be
-                // a primary email address if the user hasn't specified one.
-                ContactsContract.Contacts.Data.IS_PRIMARY + " DESC")
-    }
-
-    override fun onLoadFinished(cursorLoader: Loader<Cursor>, cursor: Cursor) {
-        val emails = ArrayList<String>()
-        cursor.moveToFirst()
-        while (!cursor.isAfterLast) {
-            emails.add(cursor.getString(ProfileQuery.ADDRESS))
-            cursor.moveToNext()
-        }
-
-        addEmailsToAutoComplete(emails)
-    }
-
-    override fun onLoaderReset(cursorLoader: Loader<Cursor>) {
-
-    }
-
-    private fun addEmailsToAutoComplete(emailAddressCollection: List<String>) {
-        //Create adapter to tell the AutoCompleteTextView what to show in its dropdown list.
-        val adapter = ArrayAdapter(this@LoginActivity,
-                android.R.layout.simple_dropdown_item_1line, emailAddressCollection)
-
-        email.setAdapter(adapter)
-    }
-
-    object ProfileQuery {
-        val PROJECTION = arrayOf(
-                ContactsContract.CommonDataKinds.Email.ADDRESS,
-                ContactsContract.CommonDataKinds.Email.IS_PRIMARY)
-        val ADDRESS = 0
-        val IS_PRIMARY = 1
-    }
 
     /**
      * Represents an asynchronous login/registration task used to authenticate
      * the user.
      */
-    inner class UserLoginTask internal constructor(private val mSite: String, private val mCompanyId: String, 
-                                                   private val mEmail: String, private val mPassword: String) : AsyncTask<Void, Void, Boolean>() {
+    inner class UserLoginTask internal constructor(private val mSite: String, private val mCompanyId: String,
+                                                   private val mUsername: String, private val mPassword: String) : AsyncTask<Void, Void, Boolean>() {
+
+        var resultStr: String? = null
 
         override fun doInBackground(vararg params: Void): Boolean? {
             // TODO: attempt authentication against a network service.
 
+
+
             try {
                 // Simulate network access.
-                Thread.sleep(2000)
+                //Thread.sleep(2000)
+
+                val reqUrl = "https://$mSite/v4_6_release/login/login.aspx"
+                val body = listOf("username" to mUsername, "password" to mPassword, "companyname" to mCompanyId)
+
+
+
+                val (request, response, result) = Fuel.upload(reqUrl, parameters = body)
+                        .dataParts { _, _ -> listOf() }
+                        .responseString()
+
+                Log.d("URL Response",result.get())
+
+                resultStr = result.get()
+
+
             } catch (e: InterruptedException) {
                 return false
             }
 
-            return DUMMY_CREDENTIALS
-                    .map { it.split(":") }
-                    .firstOrNull { it[0] == mEmail }
-                    ?.let {
-                        // Account exists, return true if the password matches.
-                        it[1] == mPassword
-                    }
-                    ?: true
+            //if result is null or contains fail, return false, otherwise, return true
+            if(resultStr == null){
+                return false
+            } else if(resultStr!!.contains("FAIL",true)){
+                return false
+            } else {
+                val editor = prefs!!.edit()
+                editor.putString(PREF_MEMBERHASH, resultStr)
+                editor.apply()
+                return true
+            }
+
         }
 
         override fun onPostExecute(success: Boolean?) {
@@ -281,9 +241,15 @@ class LoginActivity : AppCompatActivity(), LoaderCallbacks<Cursor> {
             showProgress(false)
 
             if (success!!) {
-                finish()
+                runOnUiThread {
+
+                    Toast.makeText(applicationContext, "Authenticated successfully:\n$resultStr",Toast.LENGTH_LONG).show()
+                }
             } else {
-                password.error = getString(R.string.error_incorrect_password)
+                runOnUiThread {
+                    Toast.makeText(applicationContext, "Failed to authenticate:\n$resultStr",Toast.LENGTH_LONG).show()
+                }
+                password.error = getString(R.string.something_wrong) + ": server returned $resultStr"
                 password.requestFocus()
             }
         }
@@ -292,19 +258,5 @@ class LoginActivity : AppCompatActivity(), LoaderCallbacks<Cursor> {
             mAuthTask = null
             showProgress(false)
         }
-    }
-
-    companion object {
-
-        /**
-         * Id to identity READ_CONTACTS permission request.
-         */
-        private val REQUEST_READ_CONTACTS = 0
-
-        /**
-         * A dummy authentication store containing known user names and passwords.
-         * TODO: remove after connecting to a real authentication system.
-         */
-        private val DUMMY_CREDENTIALS = arrayOf("foo@example.com:hello", "bar@example.com:world")
     }
 }
