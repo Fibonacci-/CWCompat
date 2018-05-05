@@ -2,8 +2,10 @@ package com.helwigdev.cwcompat
 
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
+import android.annotation.SuppressLint
 import android.annotation.TargetApi
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 import android.os.AsyncTask
 import android.os.Build
@@ -15,8 +17,11 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.TextView
 import android.widget.Toast
-import com.github.kittinunf.fuel.Fuel
 import kotlinx.android.synthetic.main.activity_login.*
+import okhttp3.*
+import okhttp3.OkHttpClient
+import java.io.IOException
+
 
 /**
  * A login screen that offers login via email/password.
@@ -52,6 +57,13 @@ class LoginActivity : AppCompatActivity() {
         })
 
         email_sign_in_button.setOnClickListener { attemptLogin() }
+
+        if(prefs?.contains(PREF_MEMBERHASH) == true){
+            password.isEnabled = false
+            password_layout.hint = getString(R.string.loading)
+            val validateLogin = CheckMemberHash(prefs!!.getString(PREF_MEMBERHASH,""))
+            validateLogin.execute(null as Void?)
+        }
 
     }
 
@@ -195,27 +207,30 @@ class LoginActivity : AppCompatActivity() {
 
         var resultStr: String? = null
 
+        @SuppressLint("ApplySharedPref")
         override fun doInBackground(vararg params: Void): Boolean? {
-            // TODO: attempt authentication against a network service.
-
-
 
             try {
-                // Simulate network access.
-                //Thread.sleep(2000)
-
                 val reqUrl = "https://$mSite/v4_6_release/login/login.aspx"
-                val body = listOf("username" to mUsername, "password" to mPassword, "companyname" to mCompanyId)
 
+                val client = OkHttpClient()
 
+                var requestBody = MultipartBody.Builder()
+                        .setType(MultipartBody.FORM)
+                        .addFormDataPart("username",mUsername)
+                        .addFormDataPart("password",mPassword)
+                        .addFormDataPart("companyname",mCompanyId)
+                        .build()
 
-                val (request, response, result) = Fuel.upload(reqUrl, parameters = body)
-                        .dataParts { _, _ -> listOf() }
-                        .responseString()
+                var request = Request.Builder()
+                        .url(reqUrl)
+                        .post(requestBody)
+                        .build()
 
-                Log.d("URL Response",result.get())
+                val response = client.newCall(request).execute()
+                resultStr = response.body()?.string()
 
-                resultStr = result.get()
+                Log.d("URL Response",resultStr)
 
 
             } catch (e: InterruptedException) {
@@ -230,7 +245,7 @@ class LoginActivity : AppCompatActivity() {
             } else {
                 val editor = prefs!!.edit()
                 editor.putString(PREF_MEMBERHASH, resultStr)
-                editor.apply()
+                editor.commit()
                 return true
             }
 
@@ -242,15 +257,89 @@ class LoginActivity : AppCompatActivity() {
 
             if (success!!) {
                 runOnUiThread {
-
+                    //TODO remove this debugging bit
                     Toast.makeText(applicationContext, "Authenticated successfully:\n$resultStr",Toast.LENGTH_LONG).show()
                 }
+                //start up the new activity
+                startActivity(Intent(this@LoginActivity, MainActivity::class.java))
+                //kill this activity
+                finish()
             } else {
-                runOnUiThread {
-                    Toast.makeText(applicationContext, "Failed to authenticate:\n$resultStr",Toast.LENGTH_LONG).show()
-                }
-                password.error = getString(R.string.something_wrong) + ": server returned $resultStr"
+                password.error = getString(R.string.auth_fail) + ": server returned $resultStr"
                 password.requestFocus()
+            }
+        }
+
+        override fun onCancelled() {
+            mAuthTask = null
+            showProgress(false)
+        }
+    }
+
+    inner class CheckMemberHash internal constructor(private val mMemberHash: String) : AsyncTask<Void, Void, Boolean>() {
+
+        var resultStr: String? = null
+
+        @SuppressLint("ApplySharedPref")
+        override fun doInBackground(vararg params: Void): Boolean? {
+            try {
+                val mSite = prefs?.getString(PREF_SITE, "na.myconnectwise.net")
+                val mUsername = prefs?.getString(PREF_USERNAME,"")
+                val mCompanyId = prefs?.getString(PREF_COMPANY_ID, "")
+
+                //TODO use an endoint with a smaller body
+                val reqUrl = "https://$mSite/v4_6_release/apis/3.0/service/tickets"
+
+
+               /* val (request, response, result) = reqUrl.httpGet()
+                        .header(Pair("Cookie", "companyname=$mCompanyId,memberhash=$mMemberHash,MemberID=$mUsername"))
+                        .responseString()
+
+
+                Log.d("URL Response",result.get())*/
+
+
+                val client = OkHttpClient()
+
+                val request = Request.Builder()
+                        .url(reqUrl)
+                        .addHeader("Cookie", "companyname=$mCompanyId")
+                        .addHeader("Cookie","memberHash=$mMemberHash")
+                        .addHeader("Cookie","MemberID=$mUsername")
+                        .build()
+
+                val response = client.newCall(request).execute()
+
+                val responseStr = response.body()?.string()
+                Log.d("AuthCheckCode",response.code().toString())
+                Log.d("AuthCheckBody",responseStr)
+
+                return response.isSuccessful
+
+
+
+            } catch (e: InterruptedException) {
+                return false
+            }
+
+        }
+
+        override fun onPostExecute(success: Boolean?) {
+            mAuthTask = null
+            showProgress(false)
+
+            if (success!!) {
+                runOnUiThread {
+                    //TODO remove this debugging bit
+                    Toast.makeText(applicationContext, "Existing valid auth found",Toast.LENGTH_LONG).show()
+                }
+                //start up the new activity
+                startActivity(Intent(this@LoginActivity, MainActivity::class.java))
+                //kill this activity
+                finish()
+            } else {
+                password.isEnabled = true
+                password_layout.hint = getString(R.string.prompt_password)
             }
         }
 
