@@ -20,7 +20,7 @@ import android.widget.Toast
 import kotlinx.android.synthetic.main.activity_login.*
 import okhttp3.*
 import okhttp3.OkHttpClient
-import java.io.IOException
+import org.json.JSONObject
 
 
 /**
@@ -49,6 +49,14 @@ class LoginActivity : AppCompatActivity() {
 
         // Set up the login form.
         password.setOnEditorActionListener(TextView.OnEditorActionListener { _, id, _ ->
+            if (id == EditorInfo.IME_ACTION_DONE || id == EditorInfo.IME_NULL) {
+                attemptLogin()
+                return@OnEditorActionListener true
+            }
+            false
+        })
+
+        mfa.setOnEditorActionListener(TextView.OnEditorActionListener { _, id, _ ->
             if (id == EditorInfo.IME_ACTION_DONE || id == EditorInfo.IME_NULL) {
                 attemptLogin()
                 return@OnEditorActionListener true
@@ -93,12 +101,14 @@ class LoginActivity : AppCompatActivity() {
         company_id.error = null
         username.error = null
         password.error = null
+        mfa.error = null
 
         // Store values at the time of the login attempt.
         val siteStr = site.text.toString()
         val companyIdStr = company_id.text.toString()
         val usernameStr = username.text.toString()
         val passwordStr = password.text.toString()
+        val mfaStr = mfa.text.toString()
 
         //save values to preferences to be used next time
         val editor = prefs!!.edit()
@@ -140,6 +150,13 @@ class LoginActivity : AppCompatActivity() {
             cancel = true
         }
 
+        if(mfa.visibility == View.VISIBLE && TextUtils.isEmpty(mfaStr)){
+            //if it's visible, it's required
+            mfa.error = getString(R.string.error_field_required)
+            focusView = mfa
+            cancel = true
+        }
+
         if (cancel) {
             // There was an error; don't attempt login and focus the first
             // form field with an error.
@@ -148,7 +165,7 @@ class LoginActivity : AppCompatActivity() {
             // Show a progress spinner, and kick off a background task to
             // perform the user login attempt.
             showProgress(true)
-            mAuthTask = UserLoginTask(siteStr, companyIdStr, usernameStr, passwordStr)
+            mAuthTask = UserLoginTask(siteStr, companyIdStr, usernameStr, passwordStr, (mfa.visibility == View.VISIBLE), mfaStr)
             mAuthTask!!.execute(null as Void?)
         }
     }
@@ -203,24 +220,29 @@ class LoginActivity : AppCompatActivity() {
      * the user.
      */
     inner class UserLoginTask internal constructor(private val mSite: String, private val mCompanyId: String,
-                                                   private val mUsername: String, private val mPassword: String) : AsyncTask<Void, Void, Boolean>() {
+                                                   private val mUsername: String, private val mPassword: String,
+                                                   private val mShouldMFa: Boolean, private val mMfa: String) : AsyncTask<Void, Void, JSONObject>() {
 
         var resultStr: String? = null
 
         @SuppressLint("ApplySharedPref")
-        override fun doInBackground(vararg params: Void): Boolean? {
+        override fun doInBackground(vararg params: Void): JSONObject? {
 
             try {
-                val reqUrl = "https://$mSite/v4_6_release/login/login.aspx"
+                val reqUrl = "https://$mSite/v4_6_release/login/login.aspx?response=json"
 
                 val client = OkHttpClient()
 
-                var requestBody = MultipartBody.Builder()
+                var requestBodyBuilder = MultipartBody.Builder()
                         .setType(MultipartBody.FORM)
                         .addFormDataPart("username",mUsername)
                         .addFormDataPart("password",mPassword)
                         .addFormDataPart("companyname",mCompanyId)
-                        .build()
+                if(mShouldMFa){
+                    requestBodyBuilder.addFormDataPart("auth_pin",mMfa)
+                }
+
+                var requestBody = requestBodyBuilder.build()
 
                 var request = Request.Builder()
                         .url(reqUrl)
@@ -234,28 +256,27 @@ class LoginActivity : AppCompatActivity() {
 
 
             } catch (e: InterruptedException) {
-                return false
+                return null
             }
 
             //if result is null or contains fail, return false, otherwise, return true
             if(resultStr == null){
-                return false
-            } else if(resultStr!!.contains("FAIL",true)){
-                return false
+                return null
             } else {
-                val editor = prefs!!.edit()
-                editor.putString(PREF_MEMBERHASH, resultStr)
-                editor.commit()
-                return true
+                //attempt to parse
+                return JSONObject(resultStr!!)
             }
 
         }
 
-        override fun onPostExecute(success: Boolean?) {
+        override fun onPostExecute(result: JSONObject?) {
             mAuthTask = null
             showProgress(false)
 
-            if (success!!) {
+            if (result != null && result.getBoolean("Success")) {
+                val editor = prefs!!.edit()
+                editor.putString(PREF_MEMBERHASH, result.getString("Hash"))
+                editor.apply()
                 runOnUiThread {
                     //TODO remove this debugging bit
                     Toast.makeText(applicationContext, "Authenticated successfully:\n$resultStr",Toast.LENGTH_LONG).show()
@@ -264,9 +285,21 @@ class LoginActivity : AppCompatActivity() {
                 startActivity(Intent(this@LoginActivity, MainActivity::class.java))
                 //kill this activity
                 finish()
-            } else {
-                password.error = getString(R.string.auth_fail) + ": server returned $resultStr"
+            } else if(result != null && (result.getString("FailureType") == "multifactorauthentication")){
+                if(mfa.visibility != View.VISIBLE){
+                    mfa.error = getString(R.string.mfa_required)
+                    mfa.visibility = View.VISIBLE
+                } else {
+                    mfa.error = result.getString("FailureReason")
+                }
+
+
+                mfa.requestFocus()
+            } else if(result != null){
+                password.error = getString(R.string.auth_fail) + ": ${result.getString("FailureReason")}"
                 password.requestFocus()
+            } else {
+                password.error = getString(R.string.no_data_from_server)
             }
         }
 

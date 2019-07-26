@@ -27,4 +27,7 @@
     <string name="nav_header_desc">Account Profile Image</string>
     <string name="action_settings">Settings</string>
     <string name="loading">Loading...</string>
+    <string name="prompt_authcode">MFA code</string>
+    <string name="mfa_required">Enter authenticator pin</string>
+    <string name="no_data_from_server">Server didn\'t return any data</string>
 </resources>
