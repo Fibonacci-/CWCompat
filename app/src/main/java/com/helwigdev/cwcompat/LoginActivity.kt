@@ -10,7 +10,7 @@ import android.content.SharedPreferences
 import android.os.AsyncTask
 import android.os.Build
 import android.os.Bundle
-import android.support.v7.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatActivity
 import android.text.TextUtils
 import android.util.Log
 import android.view.View
@@ -61,7 +61,7 @@ class LoginActivity : AppCompatActivity() {
         if(prefs?.contains(PREF_MEMBERHASH) == true){
             password.isEnabled = false
             password_layout.hint = getString(R.string.loading)
-            val validateLogin = CheckMemberHash(prefs!!.getString(PREF_MEMBERHASH,""))
+            val validateLogin = CheckMemberHash(prefs!!.getString(PREF_MEMBERHASH,"")!!)
             validateLogin.execute(null as Void?)
         }
 
