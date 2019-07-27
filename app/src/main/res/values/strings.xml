@@ -30,4 +30,11 @@
     <string name="prompt_authcode">MFA code</string>
     <string name="mfa_required">Enter authenticator pin</string>
     <string name="no_data_from_server">Server didn\'t return any data</string>
+
+    <string name="menu_home">Home</string>
+    <string name="menu_gallery">Gallery</string>
+    <string name="menu_slideshow">Slideshow</string>
+    <string name="menu_tools">Tools</string>
+    <string name="menu_share">Share</string>
+    <string name="menu_send">Send</string>
 </resources>

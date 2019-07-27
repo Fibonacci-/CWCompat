@@ -17,20 +17,23 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.TextView
 import android.widget.Toast
+import com.helwigdev.cwcompat.services.CWService
 import kotlinx.android.synthetic.main.activity_login.*
+import kotlinx.coroutines.*
 import okhttp3.*
 import okhttp3.OkHttpClient
 import org.json.JSONObject
+import kotlin.coroutines.CoroutineContext
 
 
 /**
  * A login screen that offers login via email/password.
  */
-class LoginActivity : AppCompatActivity() {
-    /**
-     * Keep track of the login task to ensure we can cancel it if requested.
-     */
-    private var mAuthTask: UserLoginTask? = null
+class LoginActivity : AppCompatActivity(), CoroutineScope {
+
+    private var job: Job = Job()
+    override val coroutineContext: CoroutineContext
+        get() = Dispatchers.Main + job
 
     var prefs: SharedPreferences? = null
     val PREFS_FILENAME = "com.helwigdev.cwcompat.prefs"
@@ -69,8 +72,12 @@ class LoginActivity : AppCompatActivity() {
         if(prefs?.contains(PREF_MEMBERHASH) == true){
             password.isEnabled = false
             password_layout.hint = getString(R.string.loading)
-            val validateLogin = CheckMemberHash(prefs!!.getString(PREF_MEMBERHASH,"")!!)
-            validateLogin.execute(null as Void?)
+            launch {
+                val success = withContext(Dispatchers.IO){
+                    CWService.initialize(this@LoginActivity).hasValidSession()
+                }
+                onSessionCheckResult(success)
+            }
         }
 
     }
@@ -92,9 +99,6 @@ class LoginActivity : AppCompatActivity() {
      * errors are presented and no actual login attempt is made.
      */
     private fun attemptLogin() {
-        if (mAuthTask != null) {
-            return
-        }
 
         // Reset errors.
         site.error = null
@@ -165,220 +169,102 @@ class LoginActivity : AppCompatActivity() {
             // Show a progress spinner, and kick off a background task to
             // perform the user login attempt.
             showProgress(true)
-            mAuthTask = UserLoginTask(siteStr, companyIdStr, usernameStr, passwordStr, (mfa.visibility == View.VISIBLE), mfaStr)
-            mAuthTask!!.execute(null as Void?)
+
+            launch {
+                val result = withContext(Dispatchers.IO){
+                    CWService.initialize(this@LoginActivity).login(siteStr,
+                            companyIdStr, usernameStr, passwordStr, (mfa.visibility == View.VISIBLE), mfaStr)
+                }
+                onLoginResult(result)
+            }
         }
     }
 
     private fun isPasswordValid(password: String): Boolean {
-        //TODO: Replace this with your own logic
         return password.length > 1
+    }
+
+    private fun onLoginResult(result: JSONObject?){
+
+        if (result != null && result.getBoolean("Success")) {
+            val editor = prefs!!.edit()
+            editor.putString(PREF_MEMBERHASH, result.getString("Hash"))
+            editor.apply()
+            launch {
+                val success = withContext(Dispatchers.IO){
+                    CWService.initialize(this@LoginActivity).hasValidSession()
+                }
+                onSessionCheckResult(success)//get member info
+            }
+        } else if(result != null && (result.getString("FailureType") == "multifactorauthentication")){
+            if(mfa.visibility != View.VISIBLE){
+                mfa.error = getString(R.string.mfa_required)
+                mfa.visibility = View.VISIBLE
+            } else {
+                mfa.error = result.getString("FailureReason")
+            }
+
+
+            mfa.requestFocus()
+        } else if(result != null){
+            password.error = getString(R.string.auth_fail) + ": ${result.getString("FailureReason")}"
+            password.requestFocus()
+        } else {
+            password.error = getString(R.string.no_data_from_server)
+        }
+        showProgress(false)
+    }
+
+    private fun onSessionCheckResult(result: JSONObject) {
+        showProgress(false)
+
+        if (result.has("id")) {//then we were successful
+            runOnUiThread {
+                //TODO remove this debugging bit
+                Toast.makeText(applicationContext, "Existing valid auth found",Toast.LENGTH_LONG).show()
+            }
+            //start up the new activity
+            startActivity(Intent(this@LoginActivity, MainActivity::class.java))
+            //kill this activity
+            finish()
+        } else {
+            password.isEnabled = true
+            password_layout.hint = getString(R.string.prompt_password)
+        }
     }
 
     /**
      * Shows the progress UI and hides the login form.
      */
-    @TargetApi(Build.VERSION_CODES.HONEYCOMB_MR2)
     private fun showProgress(show: Boolean) {
-        // On Honeycomb MR2 we have the ViewPropertyAnimator APIs, which allow
-        // for very easy animations. If available, use these APIs to fade-in
-        // the progress spinner.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB_MR2) {
-            val shortAnimTime = resources.getInteger(android.R.integer.config_shortAnimTime).toLong()
 
-            login_form.visibility = if (show) View.GONE else View.VISIBLE
-            login_form.animate()
-                    .setDuration(shortAnimTime)
-                    .alpha((if (show) 0 else 1).toFloat())
-                    .setListener(object : AnimatorListenerAdapter() {
-                        override fun onAnimationEnd(animation: Animator) {
-                            login_form.visibility = if (show) View.GONE else View.VISIBLE
-                        }
-                    })
+        val shortAnimTime = resources.getInteger(android.R.integer.config_shortAnimTime).toLong()
 
-            login_progress.visibility = if (show) View.VISIBLE else View.GONE
-            login_progress.animate()
-                    .setDuration(shortAnimTime)
-                    .alpha((if (show) 1 else 0).toFloat())
-                    .setListener(object : AnimatorListenerAdapter() {
-                        override fun onAnimationEnd(animation: Animator) {
-                            login_progress.visibility = if (show) View.VISIBLE else View.GONE
-                        }
-                    })
-        } else {
-            // The ViewPropertyAnimator APIs are not available, so simply show
-            // and hide the relevant UI components.
-            login_progress.visibility = if (show) View.VISIBLE else View.GONE
-            login_form.visibility = if (show) View.GONE else View.VISIBLE
-        }
+        login_form.visibility = if (show) View.GONE else View.VISIBLE
+        login_form.animate()
+                .setDuration(shortAnimTime)
+                .alpha((if (show) 0 else 1).toFloat())
+                .setListener(object : AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: Animator) {
+                        login_form.visibility = if (show) View.GONE else View.VISIBLE
+                    }
+                })
+
+        login_progress.visibility = if (show) View.VISIBLE else View.GONE
+        login_progress.animate()
+                .setDuration(shortAnimTime)
+                .alpha((if (show) 1 else 0).toFloat())
+                .setListener(object : AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: Animator) {
+                        login_progress.visibility = if (show) View.VISIBLE else View.GONE
+                    }
+                })
+
     }
 
-
-
-    /**
-     * Represents an asynchronous login/registration task used to authenticate
-     * the user.
-     */
-    inner class UserLoginTask internal constructor(private val mSite: String, private val mCompanyId: String,
-                                                   private val mUsername: String, private val mPassword: String,
-                                                   private val mShouldMFa: Boolean, private val mMfa: String) : AsyncTask<Void, Void, JSONObject>() {
-
-        var resultStr: String? = null
-
-        @SuppressLint("ApplySharedPref")
-        override fun doInBackground(vararg params: Void): JSONObject? {
-
-            try {
-                val reqUrl = "https://$mSite/v4_6_release/login/login.aspx?response=json"
-
-                val client = OkHttpClient()
-
-                var requestBodyBuilder = MultipartBody.Builder()
-                        .setType(MultipartBody.FORM)
-                        .addFormDataPart("username",mUsername)
-                        .addFormDataPart("password",mPassword)
-                        .addFormDataPart("companyname",mCompanyId)
-                if(mShouldMFa){
-                    requestBodyBuilder.addFormDataPart("auth_pin",mMfa)
-                }
-
-                var requestBody = requestBodyBuilder.build()
-
-                var request = Request.Builder()
-                        .url(reqUrl)
-                        .post(requestBody)
-                        .build()
-
-                val response = client.newCall(request).execute()
-                resultStr = response.body()?.string()
-
-                Log.d("URL Response",resultStr)
-
-
-            } catch (e: InterruptedException) {
-                return null
-            }
-
-            //if result is null or contains fail, return false, otherwise, return true
-            if(resultStr == null){
-                return null
-            } else {
-                //attempt to parse
-                return JSONObject(resultStr!!)
-            }
-
-        }
-
-        override fun onPostExecute(result: JSONObject?) {
-            mAuthTask = null
-            showProgress(false)
-
-            if (result != null && result.getBoolean("Success")) {
-                val editor = prefs!!.edit()
-                editor.putString(PREF_MEMBERHASH, result.getString("Hash"))
-                editor.apply()
-                runOnUiThread {
-                    //TODO remove this debugging bit
-                    Toast.makeText(applicationContext, "Authenticated successfully:\n$resultStr",Toast.LENGTH_LONG).show()
-                }
-                //start up the new activity
-                startActivity(Intent(this@LoginActivity, MainActivity::class.java))
-                //kill this activity
-                finish()
-            } else if(result != null && (result.getString("FailureType") == "multifactorauthentication")){
-                if(mfa.visibility != View.VISIBLE){
-                    mfa.error = getString(R.string.mfa_required)
-                    mfa.visibility = View.VISIBLE
-                } else {
-                    mfa.error = result.getString("FailureReason")
-                }
-
-
-                mfa.requestFocus()
-            } else if(result != null){
-                password.error = getString(R.string.auth_fail) + ": ${result.getString("FailureReason")}"
-                password.requestFocus()
-            } else {
-                password.error = getString(R.string.no_data_from_server)
-            }
-        }
-
-        override fun onCancelled() {
-            mAuthTask = null
-            showProgress(false)
-        }
+    override fun onDestroy() {
+        super.onDestroy()
+        job.cancel()
     }
 
-    inner class CheckMemberHash internal constructor(private val mMemberHash: String) : AsyncTask<Void, Void, Boolean>() {
-
-        var resultStr: String? = null
-
-        @SuppressLint("ApplySharedPref")
-        override fun doInBackground(vararg params: Void): Boolean? {
-            try {
-                val mSite = prefs?.getString(PREF_SITE, "na.myconnectwise.net")
-                val mUsername = prefs?.getString(PREF_USERNAME,"")
-                val mCompanyId = prefs?.getString(PREF_COMPANY_ID, "")
-
-                //TODO use an endoint with a smaller body
-                val reqUrl = "https://$mSite/v4_6_release/apis/3.0/service/tickets"
-
-
-               /* val (request, response, result) = reqUrl.httpGet()
-                        .header(Pair("Cookie", "companyname=$mCompanyId,memberhash=$mMemberHash,MemberID=$mUsername"))
-                        .responseString()
-
-
-                Log.d("URL Response",result.get())*/
-
-
-                val client = OkHttpClient()
-
-                val request = Request.Builder()
-                        .url(reqUrl)
-                        .addHeader("Cookie", "companyname=$mCompanyId")
-                        .addHeader("Cookie","memberHash=$mMemberHash")
-                        .addHeader("Cookie","MemberID=$mUsername")
-                        .build()
-
-                val response = client.newCall(request).execute()
-
-                val responseStr = response.body()?.string()
-                Log.d("AuthCheckCode",response.code().toString())
-                Log.d("AuthCheckBody",responseStr)
-
-                return response.isSuccessful
-
-
-
-            } catch (e: InterruptedException) {
-                return false
-            }
-
-        }
-
-        override fun onPostExecute(success: Boolean?) {
-            mAuthTask = null
-            showProgress(false)
-
-            if (success!!) {
-                runOnUiThread {
-                    //TODO remove this debugging bit
-                    Toast.makeText(applicationContext, "Existing valid auth found",Toast.LENGTH_LONG).show()
-                }
-                //start up the new activity
-                startActivity(Intent(this@LoginActivity, MainActivity::class.java))
-                //kill this activity
-                finish()
-            } else {
-                password.isEnabled = true
-                password_layout.hint = getString(R.string.prompt_password)
-            }
-        }
-
-        override fun onCancelled() {
-            mAuthTask = null
-            showProgress(false)
-        }
-    }
 }
