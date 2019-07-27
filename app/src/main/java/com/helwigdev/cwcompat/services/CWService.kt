@@ -2,6 +2,8 @@ package com.helwigdev.cwcompat.services
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.util.Log
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.async
@@ -12,6 +14,7 @@ import org.json.JSONObject
 import com.franmontiel.persistentcookiejar.persistence.SharedPrefsCookiePersistor
 import com.franmontiel.persistentcookiejar.cache.SetCookieCache
 import com.franmontiel.persistentcookiejar.PersistentCookieJar
+import java.io.IOException
 import java.lang.Exception
 
 
@@ -39,7 +42,6 @@ object CWService {
     lateinit var httpClient: OkHttpClient
 
     fun initialize(context: Context): CWService{
-
         if(!initialized) {
             this.prefs = context.getSharedPreferences(PREFS_FILENAME, Context.MODE_PRIVATE)
             mSite = prefs.getString(PREF_SITE, "na.myconnectwise.net")!!
@@ -121,5 +123,28 @@ object CWService {
 
     }
 
+    suspend fun getUserThumbnail(): Bitmap{
+        if(!prefs.contains(PREF_PHOTODOWNLOAD)){throw NoSuchElementException()}
+        val reqUrl = prefs.getString(PREF_PHOTODOWNLOAD,"")
+
+        val request = Request.Builder()
+                .url(reqUrl!!)
+                .build()
+
+        val response = GlobalScope.async { httpClient.newCall(request).execute() }
+
+        if (!response.await().isSuccessful) throw IOException("Unexpected code ${response.await()}")
+
+        val inputStream = response.await().body()?.byteStream()
+
+        return BitmapFactory.decodeStream(inputStream)
+    }
+
+
+    val userFullName:String
+        get() = prefs.getString(PREF_FULLNAME,"") + ""
+
+    val userEmail:String
+        get() = prefs.getString(PREF_DEFAULTEMAIL,"") + ""
 
 }

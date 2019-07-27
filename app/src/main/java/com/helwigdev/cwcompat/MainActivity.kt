@@ -1,6 +1,8 @@
 package com.helwigdev.cwcompat
 
+import android.graphics.Bitmap
 import android.os.Bundle
+import android.util.Log
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.android.material.snackbar.Snackbar
 import androidx.core.view.GravityCompat
@@ -11,9 +13,16 @@ import com.google.android.material.navigation.NavigationView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import android.view.Menu
+import com.helwigdev.cwcompat.services.CWService
+import kotlinx.android.synthetic.main.nav_header_main.*
+import kotlinx.coroutines.*
+import kotlin.coroutines.CoroutineContext
 
-class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelectedListener {
+class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelectedListener, CoroutineScope {
 
+    private var job: Job = Job()
+    override val coroutineContext: CoroutineContext
+        get() = Dispatchers.Main + job
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -34,6 +43,20 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         toggle.syncState()
 
         navView.setNavigationItemSelectedListener(this)
+
+        launch {
+            val pic = withContext(Dispatchers.IO){
+                CWService.initialize(this@MainActivity).getUserThumbnail()
+            }
+            setUserInfo(pic)
+        }
+    }
+
+    private fun setUserInfo(bitmap: Bitmap){
+        Log.d("MainActivity","Got profile bitmap")
+        iv_profile.setImageBitmap(bitmap)
+        tv_fullname.text = CWService.initialize(this).userFullName
+        tv_email.text = CWService.initialize(this).userEmail
     }
 
     override fun onBackPressed() {
