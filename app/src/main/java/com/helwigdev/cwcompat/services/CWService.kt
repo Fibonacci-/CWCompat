@@ -15,6 +15,7 @@ import com.franmontiel.persistentcookiejar.persistence.SharedPrefsCookiePersisto
 import com.franmontiel.persistentcookiejar.cache.SetCookieCache
 import com.franmontiel.persistentcookiejar.PersistentCookieJar
 import org.json.JSONArray
+import org.ocpsoft.prettytime.PrettyTime
 import java.io.IOException
 import java.lang.Exception
 import java.text.SimpleDateFormat
@@ -194,7 +195,16 @@ object CWService {
 
         return ScheduleType(retObj.getInt("id"),retObj.getString("identifier"),retObj.getString("name"))
 
+    }
 
+    fun getNiceDate(date:String):String{
+        val formatter = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.getDefault())
+        return getNiceDate(formatter.parse(date))
+    }
+
+    fun getNiceDate(date:Date?):String{
+        val p = PrettyTime()
+        return p.format(date)
     }
 
 

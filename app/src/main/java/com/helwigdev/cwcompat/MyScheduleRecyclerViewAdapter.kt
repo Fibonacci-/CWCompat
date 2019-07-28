@@ -8,6 +8,7 @@ import android.widget.TextView
 
 
 import com.helwigdev.cwcompat.ScheduleFragment.OnListFragmentInteractionListener
+import com.helwigdev.cwcompat.services.CWService
 
 import kotlinx.android.synthetic.main.fragment_schedule.view.*
 import org.json.JSONArray
@@ -42,13 +43,21 @@ class MyScheduleRecyclerViewAdapter(
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val item:JSONObject = mValues.getJSONObject(position)
-        holder.mIdView.text = item.getString("id")
+        if(item.has("id") && (item.getInt("id") > 0)){
+            holder.mIdView.text = item.getString("id")
+        } else {holder.mIdView.visibility = View.GONE }
+
         holder.mContentView.text = item.getString("name")
         if(item.has("where")){
             holder.mLocation.text = item.getJSONObject("where").getString("name")
             holder.mLocation.visibility = View.VISIBLE
+        } else {holder.mLocation.visibility = View.GONE}
+        if(item.has("dateStart") && item.has("dateEnd")) {
+            holder.mDateStart.text = CWService.getNiceDate(item.getString("dateStart"))
+            holder.mDateEnd.text = CWService.getNiceDate(item.getString("dateEnd"))
         } else {
-            holder.mLocation.visibility = View.GONE
+            holder.mDateStart.visibility = View.GONE
+            holder.mDateEnd.visibility = View.GONE
         }
 
         with(holder.mView) {
@@ -63,6 +72,8 @@ class MyScheduleRecyclerViewAdapter(
         val mIdView: TextView = mView.item_number
         val mContentView: TextView = mView.content
         val mLocation:TextView = mView.tv_location
+        val mDateStart:TextView = mView.tv_time_start
+        val mDateEnd:TextView = mView.tv_time_end
 
         override fun toString(): String {
             return super.toString() + " '" + mContentView.text + "'"

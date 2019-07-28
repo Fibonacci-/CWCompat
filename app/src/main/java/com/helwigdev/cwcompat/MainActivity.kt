@@ -73,6 +73,12 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
 
     private fun onSchedulesLoaded(array:JSONArray){
         Log.d("MainActivity", "Got array: $array")
+        if(array.length() == 0){
+            val o = JSONObject()
+            o.put("name","No schedule entries")
+            o.put("id", -1)
+            array.put(o)
+        }
         replaceFragmenty(fragment = ScheduleFragment.newInstance(array),
                         allowStateLoss = true,
                         containerViewId = cl_content.id)
@@ -115,7 +121,7 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
                 Toast.makeText(this,"Selected schedule",Toast.LENGTH_LONG).show()
                 launch {
                     val schedules = withContext(Dispatchers.IO){
-                        CWService.initialize(this@MainActivity).getScheduleEntriesForDate(Date(1564122271000))
+                        CWService.initialize(this@MainActivity).getScheduleEntriesForDate(Date())
                     }
                     onSchedulesLoaded(schedules)
                 }
