@@ -1,6 +1,7 @@
 package com.helwigdev.cwcompat
 
 import android.graphics.Bitmap
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import com.google.android.material.floatingactionbutton.FloatingActionButton
@@ -13,12 +14,21 @@ import com.google.android.material.navigation.NavigationView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import android.view.Menu
+import android.view.View
+import android.widget.Toast
+import androidx.fragment.app.Fragment
 import com.helwigdev.cwcompat.services.CWService
+import kotlinx.android.synthetic.main.content_main.*
 import kotlinx.android.synthetic.main.nav_header_main.*
 import kotlinx.coroutines.*
+import org.json.JSONArray
+import org.json.JSONObject
+import java.util.*
 import kotlin.coroutines.CoroutineContext
 
-class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelectedListener, CoroutineScope {
+class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelectedListener, CoroutineScope, ScheduleFragment.OnListFragmentInteractionListener {
+
+
 
     private var job: Job = Job()
     override val coroutineContext: CoroutineContext
@@ -32,7 +42,7 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
 
         val fab: FloatingActionButton = findViewById(R.id.fab)
         fab.setOnClickListener { view ->
-            Snackbar.make(view, "Replace with your own action", Snackbar.LENGTH_LONG)
+            Snackbar.make(view, "TODO create ticket dialog", Snackbar.LENGTH_LONG)
                     .setAction("Action", null).show()
         }
         val drawerLayout: DrawerLayout = findViewById(R.id.drawer_layout)
@@ -43,6 +53,8 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         toggle.syncState()
 
         navView.setNavigationItemSelectedListener(this)
+        navView.menu.getItem(0).isChecked = true
+        onNavigationItemSelected(navView.menu.getItem(0))
 
         launch {
             val pic = withContext(Dispatchers.IO){
@@ -57,6 +69,15 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         iv_profile.setImageBitmap(bitmap)
         tv_fullname.text = CWService.initialize(this).userFullName
         tv_email.text = CWService.initialize(this).userEmail
+    }
+
+    private fun onSchedulesLoaded(array:JSONArray){
+        Log.d("MainActivity", "Got array: $array")
+        replaceFragmenty(fragment = ScheduleFragment.newInstance(array),
+                        allowStateLoss = true,
+                        containerViewId = cl_content.id)
+        pb_fragmentLoading.visibility = View.GONE
+
     }
 
     override fun onBackPressed() {
@@ -86,9 +107,18 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
 
     override fun onNavigationItemSelected(item: MenuItem): Boolean {
         // Handle navigation view item clicks here.
+        pb_fragmentLoading.visibility = View.VISIBLE
         when (item.itemId) {
-            R.id.nav_camera -> {
-                // Handle the camera action
+            R.id.nav_calendar -> {
+                title = getString(R.string.schedule)
+                // Handle the calendar action
+                Toast.makeText(this,"Selected schedule",Toast.LENGTH_LONG).show()
+                launch {
+                    val schedules = withContext(Dispatchers.IO){
+                        CWService.initialize(this@MainActivity).getScheduleEntriesForDate(Date(1564122271000))
+                    }
+                    onSchedulesLoaded(schedules)
+                }
             }
             R.id.nav_gallery -> {
 
@@ -110,4 +140,9 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         drawerLayout.closeDrawer(GravityCompat.START)
         return true
     }
+
+    override fun onListFragmentInteraction(item: JSONObject) {
+        Toast.makeText(this,"Clicked item " + item.getInt("id"),Toast.LENGTH_LONG).show()//To change body of created functions use File | Settings | File Templates.
+    }
+
 }

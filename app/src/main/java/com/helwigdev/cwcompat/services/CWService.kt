@@ -14,8 +14,12 @@ import org.json.JSONObject
 import com.franmontiel.persistentcookiejar.persistence.SharedPrefsCookiePersistor
 import com.franmontiel.persistentcookiejar.cache.SetCookieCache
 import com.franmontiel.persistentcookiejar.PersistentCookieJar
+import org.json.JSONArray
 import java.io.IOException
 import java.lang.Exception
+import java.text.SimpleDateFormat
+import java.util.*
+import kotlin.NoSuchElementException
 
 
 object CWService {
@@ -58,6 +62,7 @@ object CWService {
         return this
     }
 
+    //LOGIN
     suspend fun login(site: String, companyId: String,
               username: String, password: String,
               shouldMFa: Boolean, mfa: String): JSONObject{
@@ -85,11 +90,16 @@ object CWService {
         val cookies = response.await().header("Set-Cookie")
         val resultStr = response.await().body()?.string() ?: return JSONObject()
 
+        prefs.edit().putString(PREF_SITE, site).putString(PREF_USERNAME, username).apply()
+        mSite = site
+        mUsername = username
+
         Log.d("CWService",resultStr)
         return JSONObject(resultStr)
 
     }
 
+    //USER METADATA
     suspend fun hasValidSession(): JSONObject{
         mSite = prefs!!.getString(PREF_SITE, "na.myconnectwise.net")!!
         mUsername = prefs!!.getString(PREF_USERNAME, "")!!
@@ -138,6 +148,31 @@ object CWService {
         val inputStream = response.await().body()?.byteStream()
 
         return BitmapFactory.decodeStream(inputStream)
+    }
+
+
+    //SCHEDULE OPERATIONS
+    suspend fun getScheduleEntriesForDate(date: Date): JSONArray{
+        val format = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        format.timeZone = TimeZone.getTimeZone("UTC")
+
+        val tomorrow = format.format(date) + "T23:59:59Z"
+        val today = format.format(date) + "T00:00:00Z"
+        val reqUrl = "https://api-$mSite/v4_6_release/apis/3.0/schedule/entries" +
+                "?conditions=member/identifier=\"" + mUsername + "\" and dateStart > [" + today +
+                "] and dateStart < [" + tomorrow + "]"
+
+        val request = Request.Builder()
+                .url(reqUrl)
+                .build()
+
+        val response = GlobalScope.async { httpClient.newCall(request).execute() }
+        if (!response.await().isSuccessful) throw IOException("Unexpected code ${response.await()}")
+
+        val resultStr = response.await().body()?.string() ?: return JSONArray()
+        Log.d("CWService",resultStr)
+
+        return JSONArray(resultStr)
     }
 
 
