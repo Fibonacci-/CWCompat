@@ -43,6 +43,8 @@ object CWService {
     lateinit var mCompanyId:String
     lateinit var mMemberHash:String
 
+    var scheduleTypes: MutableMap<Int, ScheduleType> = mutableMapOf()
+
     lateinit var httpClient: OkHttpClient
 
     fun initialize(context: Context): CWService{
@@ -158,9 +160,10 @@ object CWService {
 
         val tomorrow = format.format(date) + "T23:59:59Z"
         val today = format.format(date) + "T00:00:00Z"
+        //TODO order by start date ascending(?)
         val reqUrl = "https://api-$mSite/v4_6_release/apis/3.0/schedule/entries" +
                 "?conditions=member/identifier=\"" + mUsername + "\" and dateStart > [" + today +
-                "] and dateStart < [" + tomorrow + "]"
+                "] and dateStart < [" + tomorrow + "]&orderby=dateStart asc"
 
         val request = Request.Builder()
                 .url(reqUrl)
@@ -175,11 +178,32 @@ object CWService {
         return JSONArray(resultStr)
     }
 
+    suspend fun getScheduleEntryType(id: Int, typeHref:String):ScheduleType{
+        if(scheduleTypes.containsKey(id)){return scheduleTypes[id]!!}
+
+        val request = Request.Builder()
+                .url(typeHref)
+                .build()
+
+        val response = GlobalScope.async { httpClient.newCall(request).execute() }
+        if (!response.await().isSuccessful) return ScheduleType(-1,"Error","Error")
+
+        val resultStr = response.await().body()?.string() ?:  return ScheduleType(-1,"Error","Error")
+
+        val retObj = JSONObject(resultStr)
+
+        return ScheduleType(retObj.getInt("id"),retObj.getString("identifier"),retObj.getString("name"))
+
+
+    }
+
 
     val userFullName:String
         get() = prefs.getString(PREF_FULLNAME,"") + ""
 
     val userEmail:String
         get() = prefs.getString(PREF_DEFAULTEMAIL,"") + ""
+
+    data class ScheduleType(val id: Int,val identifier:String, val name:String)
 
 }
