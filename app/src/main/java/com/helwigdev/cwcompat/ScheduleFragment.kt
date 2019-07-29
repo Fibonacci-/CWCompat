@@ -3,12 +3,13 @@ package com.helwigdev.cwcompat
 import android.content.Context
 import android.os.Bundle
 import androidx.fragment.app.Fragment
-import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.TextView
+import kotlinx.android.synthetic.main.fragment_schedule_list.*
 
 import org.json.JSONArray
 import org.json.JSONObject
@@ -36,14 +37,21 @@ class ScheduleFragment : Fragment() {
                               savedInstanceState: Bundle?): View? {
         val view = inflater.inflate(R.layout.fragment_schedule_list, container, false)
 
+        val v = view.findViewById<RecyclerView>(R.id.list)
+        val listStatus = view.findViewById<TextView>(R.id.tv_list_status)
+
         // Set the adapter
-        if (view is RecyclerView) {
-            with(view) {
+        if (v is RecyclerView) {
+            with(v) {
                 layoutManager = LinearLayoutManager(context)
 
                 adapter = MyScheduleRecyclerViewAdapter(schedules, listener)
             }
         }
+        if(schedules.length() == 0){
+            listStatus.text = getString(R.string.no_schedules)
+            listStatus.visibility = View.VISIBLE
+        } else {listStatus.visibility = View.GONE}
         return view
     }
 

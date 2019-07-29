@@ -157,10 +157,14 @@ object CWService {
     //SCHEDULE OPERATIONS
     suspend fun getScheduleEntriesForDate(date: Date): JSONArray{
         val format = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-        format.timeZone = TimeZone.getTimeZone("UTC")
 
-        val tomorrow = format.format(date) + "T23:59:59Z"
-        val today = format.format(date) + "T00:00:00Z"
+        val c = Calendar.getInstance(Locale.getDefault())
+        c.time = date
+        c.add(Calendar.DAY_OF_YEAR,1)
+        val dTomorrow:Date = c.time
+
+        val tomorrow = format.format(dTomorrow)
+        val today = format.format(date)
         //TODO order by start date ascending(?)
         val reqUrl = "https://api-$mSite/v4_6_release/apis/3.0/schedule/entries" +
                 "?conditions=member/identifier=\"" + mUsername + "\" and dateStart > [" + today +

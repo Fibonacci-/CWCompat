@@ -41,4 +41,6 @@
 
     <!-- TODO: Remove or change this placeholder text -->
     <string name="hello_blank_fragment">Hello blank fragment</string>
+    <string name="no_tickets" >No tickets found</string>
+    <string name="no_schedules">No schedule entries found</string>
 </resources>

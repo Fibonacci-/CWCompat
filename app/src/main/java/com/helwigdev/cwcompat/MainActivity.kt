@@ -19,6 +19,7 @@ import android.widget.Toast
 import androidx.fragment.app.Fragment
 import com.helwigdev.cwcompat.services.CWService
 import kotlinx.android.synthetic.main.content_main.*
+import kotlinx.android.synthetic.main.fragment_schedule_list.*
 import kotlinx.android.synthetic.main.nav_header_main.*
 import kotlinx.coroutines.*
 import org.json.JSONArray
@@ -73,12 +74,7 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
 
     private fun onSchedulesLoaded(array:JSONArray){
         Log.d("MainActivity", "Got array: $array")
-        if(array.length() == 0){
-            val o = JSONObject()
-            o.put("name","No schedule entries")
-            o.put("id", -1)
-            array.put(o)
-        }
+
         replaceFragmenty(fragment = ScheduleFragment.newInstance(array),
                         allowStateLoss = true,
                         containerViewId = cl_content.id)
